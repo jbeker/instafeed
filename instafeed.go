@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -10,7 +11,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/goutils"
-	"github.com/ahmdrz/goinsta/v2"
+	"github.com/Davincible/goinsta/v3"
 	"github.com/gorilla/feeds"
 	"github.com/pkg/errors"
 )
@@ -77,7 +78,18 @@ func main() {
 
 		insta = goinsta.New(igLogin, igPassword)
 		if err = insta.Login(); err != nil {
-			dieOnError("unable to initialize Instagram client: %s", err)
+			if strings.Contains(err.Error(), "two Factor Autentication required") {
+				fmt.Fprint(os.Stderr, "Two-factor authentication required. Please enter your 2FA code: ")
+				scanner := bufio.NewScanner(os.Stdin)
+				scanner.Scan()
+				twoFACode := scanner.Text()
+				
+				if err = insta.TwoFactorInfo.Login2FA(twoFACode); err != nil {
+					dieOnError("unable to complete 2FA login: %s", err)
+				}
+			} else {
+				dieOnError("unable to initialize Instagram client: %s", err)
+			}
 		}
 	}
 
@@ -88,7 +100,7 @@ func main() {
 	if len(igUsers) == 0 {
 		// If no static list of IG users is provided, attempt retrieving the list of followings
 		// from the logged user's account
-		for followings := insta.Account.Following(); followings.Next(); {
+		for followings := insta.Account.Following("", goinsta.DefaultOrder); followings.Next(); {
 			for _, u := range followings.Users {
 				igUsers = append(igUsers, u.Username)
 			}
@@ -152,7 +164,7 @@ func fetchUserFeedItems(name string) ([]*feeds.Item, error) {
 
 	for latest.Next(false) {
 		for _, item := range latest.Items {
-			items = append(items, formatFeedItem(&item))
+			items = append(items, formatFeedItem(item))
 			if len(items) >= feedMaxItems {
 				return items, nil
 			}
@@ -185,7 +197,7 @@ func formatFeedItem(item *goinsta.Item) *feeds.Item {
 	}
 
 	return &feeds.Item{
-		Id:      item.ID,
+		Id:      item.GetID(),
 		Title:   shortDesc,
 		Created: time.Unix(item.TakenAt, 0),
 		Author: &feeds.Author{
