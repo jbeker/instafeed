@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path"
 	"strings"
@@ -22,6 +23,7 @@ var (
 	listFile     string
 	feedMaxItems int
 	showVersion  bool
+	debugMode    bool
 
 	version string
 )
@@ -31,6 +33,7 @@ func init() {
 		"Path to file where to store profile configuration")
 	flag.StringVar(&listFile, "l", "", "Path to file containing list of Instagram users")
 	flag.BoolVar(&showVersion, "v", false, "Show version and exit")
+	flag.BoolVar(&debugMode, "d", false, "Enable debug mode to log Instagram API interactions")
 	flag.IntVar(&feedMaxItems, "n", 20, "Number of user feed items")
 	flag.Parse()
 
@@ -77,6 +80,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Attempting new login")
 
 		insta = goinsta.New(igLogin, igPassword)
+		setupDebugMode(insta)
+		
 		if err = insta.Login(); err != nil {
 			if strings.Contains(err.Error(), "two Factor Autentication required") {
 				fmt.Fprint(os.Stderr, "Two-factor authentication required. Please enter your 2FA code: ")
@@ -91,6 +96,8 @@ func main() {
 				dieOnError("unable to initialize Instagram client: %s", err)
 			}
 		}
+	} else {
+		setupDebugMode(insta)
 	}
 
 	if err := insta.Export(configFile); err != nil {
@@ -207,6 +214,22 @@ func formatFeedItem(item *goinsta.Item) *feeds.Item {
 		Description: shortDesc,
 		Content:     content,
 		Link:        &feeds.Link{Href: fmt.Sprintf("https://www.instagram.com/p/%s", item.Code)},
+	}
+}
+
+func setupDebugMode(insta *goinsta.Instagram) {
+	if debugMode {
+		insta.Debug = true
+		insta.SetDebugHandler(func(args ...interface{}) {
+			log.Print("[DEBUG] ", fmt.Sprint(args...))
+		})
+		insta.SetInfoHandler(func(args ...interface{}) {
+			log.Print("[INFO] ", fmt.Sprint(args...))
+		})
+		insta.SetWarnHandler(func(args ...interface{}) {
+			log.Print("[WARN] ", fmt.Sprint(args...))
+		})
+		log.Println("[DEBUG] Debug mode enabled")
 	}
 }
 
